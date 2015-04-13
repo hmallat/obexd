@@ -65,7 +65,7 @@
 #define PHONEBOOKSIZE_TAG	0X08
 #define NEWMISSEDCALLS_TAG	0X09
 
-#define PBAP_CHANNEL	15
+#define PBAP_CHANNEL	21
 
 #define PBAP_RECORD "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>	\
 <record>								\
