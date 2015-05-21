@@ -64,6 +64,8 @@ struct bluetooth_session {
 	char *service;
 	obc_transport_func func;
 	void *user_data;
+
+	guint deferred_io;
 };
 
 static GSList *sessions = NULL;
@@ -166,6 +168,9 @@ static void session_destroy(struct bluetooth_session *session)
 	if (session->conn)
 		dbus_connection_unref(session->conn);
 
+	if (session->deferred_io)
+		g_source_remove(session->deferred_io);
+
 	g_free(session->service);
 	g_free(session->adapter);
 	g_free(session);
@@ -220,6 +225,26 @@ static GIOChannel *transport_connect(const bdaddr_t *src, const bdaddr_t *dst,
 	error("%s", err->message);
 	g_error_free(err);
 	return NULL;
+}
+
+static gboolean deferred_connect(gpointer user_data)
+{
+	struct bluetooth_session *session = user_data;
+
+	session->deferred_io = 0;
+	session->io = transport_connect(&session->src, &session->dst,
+					session->port, transport_callback,
+					session);
+	if (!session->io) {
+		GError *gerr = NULL;
+		g_set_error(&gerr, OBC_BT_ERROR, -EIO, "Unable to connect");
+		if (session->func)
+			session->func(session->io, gerr, session->user_data);
+		g_clear_error(&gerr);
+		session_destroy(session);
+	}
+
+	return FALSE;
 }
 
 static void search_callback(uint8_t type, uint16_t status,
@@ -290,6 +315,7 @@ static void search_callback(uint8_t type, uint16_t status,
 	g_io_channel_set_close_on_unref(session->io, FALSE);
 	g_io_channel_unref(session->io);
 
+#if 0
 	session->io = transport_connect(&session->src, &session->dst, port,
 						transport_callback, session);
 	if (session->io != NULL) {
@@ -297,6 +323,16 @@ static void search_callback(uint8_t type, uint16_t status,
 		session->sdp = NULL;
 		return;
 	}
+#else
+	sdp_close(session->sdp);
+	session->sdp = NULL;
+
+	session->io = NULL;
+	session->deferred_io = g_timeout_add_seconds(3, deferred_connect,
+							session);
+
+	return;
+#endif
 
 failed:
 	if (session->io != NULL) {
